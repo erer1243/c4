@@ -4,6 +4,13 @@ import numpy as np
 import cv2
 import serial
 
+sys.dont_write_bytecode = True
+import colors
+from colors import (
+    LOWER_BLUE, UPPER_BLUE, LOWER_YELLOW, UPPER_YELLOW, LOWER_RED_1,
+    UPPER_RED_1, LOWER_RED_1, UPPER_RED_2, LOWER_RED_2, MASK_BLUR
+)
+
 try:
     import kipr
 except:
@@ -33,15 +40,16 @@ if RPI: threading.Thread(target=screen_on_loop, daemon=True).start()
 def open_arduino_serial():
     return serial.Serial('/dev/ttyACM0', baudrate=115200)
 
-LOWER_BLUE = np.array([105, 60, 60])
-UPPER_BLUE = np.array([135, 255, 255])
-LOWER_YELLOW = np.array([20, 150, 60])
-UPPER_YELLOW = np.array([30, 255, 255])
-LOWER_RED_1 = np.array([0, 175, 125])
-UPPER_RED_1 = np.array([12, 255, 255])
-LOWER_RED_2 = np.array([160, 125, 125])
-UPPER_RED_2 = np.array([179, 255, 255])
-MASK_BLUR = [3, 3]
+#                      H    S   V
+# LOWER_BLUE = np.array([105, 60, 127])
+# UPPER_BLUE = np.array([135, 255, 255])
+# LOWER_YELLOW = np.array([20, 150, 60])
+# UPPER_YELLOW = np.array([30, 255, 255])
+# LOWER_RED_1 = np.array([0, 175, 125])
+# UPPER_RED_1 = np.array([12, 255, 255])
+# LOWER_RED_2 = np.array([160, 125, 125])
+# UPPER_RED_2 = np.array([179, 255, 255])
+# MASK_BLUR = [3, 3]
 YELLOW_SLIDERS = [
     ('YLH', 179, LOWER_YELLOW, 0),
     ('YLS', 255, LOWER_YELLOW, 1),
@@ -77,28 +85,27 @@ BLUR_SLIDERS = [
     ("BLURY", 100, MASK_BLUR, 1),
 ]
 SLIDERS = []
-# SLIDERS += BLUE_SLIDERS
-# SLIDERS += YELLOW_SLIDERS
-# SLIDERS += RED_SLIDERS
+SLIDERS += BLUE_SLIDERS
+SLIDERS += YELLOW_SLIDERS
+SLIDERS += RED_SLIDERS
 # SLIDERS += BLUR_SLIDERS
 if RPI: SLIDERS = []
 
-def make_get_mask(lower, upper):
-    def get_mask(lower, upper, frame):
-        mask = cv2.inRange(frame, lower, upper)
-        mask = cv2.GaussianBlur(mask, MASK_BLUR, 0)
-        return mask
-    return lambda frame, lower=lower, upper=upper: get_mask(lower, upper, frame)
-
-get_board_mask        = make_get_mask(LOWER_BLUE, UPPER_BLUE)
-get_yellow_piece_mask = make_get_mask(LOWER_YELLOW, UPPER_YELLOW)
-
-get_red_1 = make_get_mask(LOWER_RED_1, UPPER_RED_1)
-get_red_2 = make_get_mask(LOWER_RED_2, UPPER_RED_2)
-get_red_helper = lambda frame: get_red_1(frame) + get_red_2(frame)
-get_red_piece_mask = lambda frame: cv2.GaussianBlur(get_red_helper(frame), MASK_BLUR, 0)
+def save_colors(*_args, **_kwargs):
+    print("Saving colors")
+    members = filter(lambda s: s.isupper(), dir(colors))
+    with open(colors.__file__, 'w') as f:
+        f.write("import numpy as np\n")
+        for name in members:
+            try:
+                new_val = str(list(globals()[name]))
+                line = f"{name} = np.array({new_val})\n"
+                f.write(line)
+            except:
+                pass
 
 cv2.namedWindow('Connect4', cv2.WINDOW_NORMAL)
+cv2.createButton("Save Colors", save_colors)
 for (name, nmax, arr, idx) in SLIDERS:
     def assign(arr, idx, val): arr[idx] = val
     if "BLUR" in name:
@@ -107,13 +114,36 @@ for (name, nmax, arr, idx) in SLIDERS:
         lam = lambda n, arr=arr, idx=idx: assign(arr, idx, n)
     cv2.createTrackbar(name, 'Connect4', arr[idx], nmax, lam)
 
+def make_get_mask(lower, upper):
+    def get_mask(lower, upper, frame):
+        mask = cv2.inRange(frame, lower, upper)
+        mask = cv2.GaussianBlur(mask, MASK_BLUR, 0)
+        return mask
+    return lambda frame, lower=lower, upper=upper: get_mask(lower, upper, frame)
+
+get_board_mask = make_get_mask(LOWER_BLUE, UPPER_BLUE)
+get_yellow_piece_mask = make_get_mask(LOWER_YELLOW, UPPER_YELLOW)
+get_red_1 = make_get_mask(LOWER_RED_1, UPPER_RED_1)
+get_red_2 = make_get_mask(LOWER_RED_2, UPPER_RED_2)
+get_red_helper = lambda frame: get_red_1(frame) + get_red_2(frame)
+get_red_piece_mask = lambda frame: cv2.GaussianBlur(get_red_helper(frame), MASK_BLUR, 0)
+
 def imshow_n(frames):
+    # Convert masks to BGR
     for i in range(0, len(frames)):
         f = frames[i]
-        if type(f) == tuple:
-            frames[i] = cv2.cvtColor(f[0], f[1])
+        if len(f.shape) == 2:
+            frames[i] = cv2.cvtColor(f, cv2.COLOR_GRAY2BGR)
+
     catted = np.concatenate(frames, axis=1)
     cv2.imshow('Connect4', catted)
+
+def grayToBGR(*frames):
+    t = tuple(map(lambda f: cv2.cvtColor(f, cv2.COLOR_GRAY2BGR), frames))
+    if len(t) == 1:
+        return t[0]
+    else:
+        return t
 
 # CAP_RESOLUTION = (160, 120)
 CAP_RESOLUTION = (320, 240)
@@ -147,13 +177,14 @@ def draw_contours(frame, contours, color=(0, 0, 255), width=2):
     cv2.drawContours(copy, contours, -1, color, width)
     return copy
 
+def draw_contour(frame, contour, **kwargs):
+    return draw_contours(frame, [contour], **kwargs)
+
 def draw_hull(frame, hull, color=(0,255,0), width=2):
     copy = np.array(frame)
     cv2.drawContours(copy, [hull], -1, color, width)
     return copy
     
-# def draw_line()
-
 def dist(a, b):
     dx = a[0] - b[0] 
     dy = a[1] - b[1]
@@ -175,29 +206,38 @@ def watch_mask():
     vid = open_webcam()
     x = 0
     while True:
+        # Get frame
         _ret, frame = vid.read()
         hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
 
+        # Get color-based masks
         board_mask = get_board_mask(hsv)
         yellow_mask = get_yellow_piece_mask(hsv)
         red_mask = get_red_piece_mask(hsv)
 
+        # Get the contour around the board
         board_contours, _hierarchy = cv2.findContours(board_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
         if len(board_contours) == 0: continue
+        board_contour = max(board_contours, key=cv2.contourArea)
 
-        c_large = max(board_contours, key=cv2.contourArea)
+        # Convex hull (necessary ??)
+        # hull = cv2.convexHull(c_large)
+        # final = draw_hull(final, hull)
+
+        # Detect piece positions
+        pos_kps = detect_blobs_in_contour(board_mask, board_contour)
+        y_kps = detect_blobs_in_contour(cv2.bitwise_not(yellow_mask), board_contour)
+        r_kps = detect_blobs_in_contour(cv2.bitwise_not(red_mask), board_contour)
+
+        # Make drawing frames
         final = apply_mask(frame, board_mask)
-        frame = draw_contours(frame, [c_large], color=(255, 0, 0), width=4)
 
-        hull = cv2.convexHull(c_large)
-        final = draw_hull(final, hull)
-
-        pos_keypoints = detect_blobs_in_contour(board_mask, hull)
-        y_keypoints = detect_blobs_in_contour(cv2.bitwise_not(yellow_mask), hull)
-        r_keypoints = detect_blobs_in_contour(cv2.bitwise_not(red_mask), hull)
-        final = draw_keypoints(final, pos_keypoints, (255, 255, 255))
-        final = draw_keypoints(final, y_keypoints, (0, 255, 255))
-        final = draw_keypoints(final, r_keypoints, (0, 0, 255))
+        # Draw stuff on drawing frames
+        frame = draw_contour(frame, board_contour, color=(255, 0, 0), width=4)
+        board_mask = draw_keypoints(grayToBGR(board_mask), pos_kps, (255, 255, 255))
+        final = draw_keypoints(final, pos_kps, (255, 255, 255))
+        final = draw_keypoints(final, y_kps, (0, 255, 255))
+        final = draw_keypoints(final, r_kps, (0, 0, 255))
 
         # x += 1
         # if x % 100 == 0:
@@ -207,13 +247,16 @@ def watch_mask():
 
         imshow_n([
             frame, 
-            (board_mask, cv2.COLOR_GRAY2BGR), 
-            (yellow_mask, cv2.COLOR_GRAY2BGR), 
-            (red_mask, cv2.COLOR_GRAY2BGR), 
+            board_mask,
+            yellow_mask,
+            red_mask,
             final,
         ])
 
-        if cv2.waitKey(30) & 0xFF == ord('q'): 
+        key = cv2.waitKey(30) & 0xff
+        if key == ord('q'):
             break
+        elif key == ord('s'):
+            save_colors()
 
 watch_mask()
