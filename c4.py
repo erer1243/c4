@@ -40,16 +40,6 @@ if RPI: threading.Thread(target=screen_on_loop, daemon=True).start()
 def open_arduino_serial():
     return serial.Serial('/dev/ttyACM0', baudrate=115200)
 
-#                      H    S   V
-# LOWER_BLUE = np.array([105, 60, 127])
-# UPPER_BLUE = np.array([135, 255, 255])
-# LOWER_YELLOW = np.array([20, 150, 60])
-# UPPER_YELLOW = np.array([30, 255, 255])
-# LOWER_RED_1 = np.array([0, 175, 125])
-# UPPER_RED_1 = np.array([12, 255, 255])
-# LOWER_RED_2 = np.array([160, 125, 125])
-# UPPER_RED_2 = np.array([179, 255, 255])
-# MASK_BLUR = [3, 3]
 YELLOW_SLIDERS = [
     ('YLH', 179, LOWER_YELLOW, 0),
     ('YLS', 255, LOWER_YELLOW, 1),
