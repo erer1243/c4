@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 import sys, os, time, threading, signal, random, math, logging
+from functools import reduce
 import numpy as np
 import cv2
 import serial
@@ -104,19 +105,18 @@ for (name, nmax, arr, idx) in SLIDERS:
         lam = lambda n, arr=arr, idx=idx: assign(arr, idx, n)
     cv2.createTrackbar(name, 'Connect4', arr[idx], nmax, lam)
 
-def make_get_mask(lower, upper):
-    def get_mask(lower, upper, frame):
-        mask = cv2.inRange(frame, lower, upper)
+def make_get_mask(lower_upper_pairs):
+    def get_mask(lups, frame):
+        masks = map(lambda lup, frame=frame: cv2.inRange(frame, lup[0], lup[1]), lups)
+        mask = reduce(lambda a, b: a + b, masks)
+        # mask = cv2.inRange(frame, lower, upper)
         mask = cv2.GaussianBlur(mask, MASK_BLUR, 0)
         return mask
-    return lambda frame, lower=lower, upper=upper: get_mask(lower, upper, frame)
+    return lambda frame, lups=lower_upper_pairs: get_mask(lups, frame)
 
-get_board_mask = make_get_mask(LOWER_BLUE, UPPER_BLUE)
-get_yellow_piece_mask = make_get_mask(LOWER_YELLOW, UPPER_YELLOW)
-get_red_1 = make_get_mask(LOWER_RED_1, UPPER_RED_1)
-get_red_2 = make_get_mask(LOWER_RED_2, UPPER_RED_2)
-get_red_helper = lambda frame: get_red_1(frame) + get_red_2(frame)
-get_red_piece_mask = lambda frame: cv2.GaussianBlur(get_red_helper(frame), MASK_BLUR, 0)
+get_board_mask = make_get_mask([(LOWER_BLUE, UPPER_BLUE)])
+get_yellow_piece_mask = make_get_mask([(LOWER_YELLOW, UPPER_YELLOW)])
+get_red_piece_mask = make_get_mask([(LOWER_RED_1, UPPER_RED_1), (LOWER_RED_2, UPPER_RED_2)])
 
 def imshow_n(frames):
     # Convert masks to BGR
@@ -150,7 +150,7 @@ def open_webcam():
     vid.set(cv2.CAP_PROP_FRAME_HEIGHT, CAP_RESOLUTION[1])
     return vid
 
-def apply_mask(frame, mask): 
+def apply_mask(frame, mask):
     return cv2.bitwise_and(frame, frame, mask=mask)
 
 BLOB_DET = cv2.SimpleBlobDetector_create()
@@ -174,9 +174,9 @@ def draw_hull(frame, hull, color=(0,255,0), width=2):
     copy = np.array(frame)
     cv2.drawContours(copy, [hull], -1, color, width)
     return copy
-    
+
 def dist(a, b):
-    dx = a[0] - b[0] 
+    dx = a[0] - b[0]
     dy = a[1] - b[1]
     return int(math.sqrt(dx * dx + dy * dy))
 
@@ -191,10 +191,18 @@ def divine_board(ps, ys, rs):
     dist_to_kp = lambda kp2, kp=kp: [kp2, dist(kp.pt, kp2.pt)]
     ps_close = sorted(map(dist_to_kp, ps), key=snd)
     return list(map(fst, ps_close))
-    
+
 def watch_mask():
     vid = open_webcam()
     x = 0
+
+    def wait_key():
+        key = cv2.waitKey(30) & 0xff
+        if key == ord('q'):
+            sys.exit()
+        elif key == ord('s'):
+            save_colors()
+
     while True:
         # Get frame
         _ret, frame = vid.read()
@@ -207,12 +215,10 @@ def watch_mask():
 
         # Get the contour around the board
         board_contours, _hierarchy = cv2.findContours(board_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-        if len(board_contours) == 0: continue
+        if len(board_contours) == 0:
+            wait_key()
+            continue
         board_contour = max(board_contours, key=cv2.contourArea)
-
-        # Convex hull (necessary ??)
-        # hull = cv2.convexHull(c_large)
-        # final = draw_hull(final, hull)
 
         # Detect piece positions
         pos_kps = detect_blobs_in_contour(board_mask, board_contour)
@@ -225,7 +231,7 @@ def watch_mask():
         # Draw stuff on drawing frames
         frame = draw_contour(frame, board_contour, color=(255, 0, 0), width=4)
         board_mask = draw_keypoints(grayToBGR(board_mask), pos_kps, (255, 255, 255))
-        final = draw_keypoints(final, pos_kps, (255, 255, 255))
+        # final = draw_keypoints(final, pos_kps, (255, 255, 255))
         final = draw_keypoints(final, y_kps, (0, 255, 255))
         final = draw_keypoints(final, r_kps, (0, 0, 255))
 
@@ -236,17 +242,13 @@ def watch_mask():
         #     print(x)
 
         imshow_n([
-            frame, 
+            frame,
             board_mask,
             yellow_mask,
             red_mask,
             final,
         ])
 
-        key = cv2.waitKey(30) & 0xff
-        if key == ord('q'):
-            break
-        elif key == ord('s'):
-            save_colors()
+        wait_key()
 
 watch_mask()

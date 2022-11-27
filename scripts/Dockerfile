@@ -1,4 +1,4 @@
-FROM debian:testing-slim 
+FROM debian:testing-slim
 
 # Install deps
 RUN apt-get update && \
