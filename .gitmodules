@@ -1,0 +1,3 @@
+[submodule "elevator/MCAD"]
+	path = elevator/MCAD
+	url = https://github.com/openscad/MCAD
