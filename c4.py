@@ -28,7 +28,7 @@ def system(cmd):
     with os.popen(cmd) as subproc:
         return subproc.read().strip()
 
-signal.signal(signal.SIGINT, lambda _a, _b:  sys.exit(1))
+signal.signal(signal.SIGINT, lambda *_:  sys.exit(1))
 
 def screen_on_loop():
     while True:
