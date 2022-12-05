@@ -12,7 +12,8 @@ module piece() {
         cylinder(h=PIECE_H/WIGGLE_COEFF,
                  d=PIECE_D/WIGGLE_COEFF);
 
-        cylinder(h=PIECE_H/WIGGLE_COEFF,
+        translate([0, 0, -0.5])
+        cylinder(h=1 + PIECE_H/WIGGLE_COEFF,
                  d=PIECE_D/WIGGLE_COEFF * 0.75);
     }
 }
@@ -155,13 +156,27 @@ module mag() {
     square([THICKNESS, THICKNESS]);
 }
 
-//mag();
+*%mag();
 
-*
-for (i = [0:CAPACITY-1]) {
-    translate([0,0,i*PIECE_H])
-    translate([0,0,THICKNESS])
-    #piece();
+module string_rider() {
+    difference() {
+        cylinder(d=PIECE_D / WIGGLE_COEFF, h=PIECE_H);
+
+        CHANNEL_H = PIECE_H / 3;
+        #
+        translate([0,0,CHANNEL_H/2 + 1])
+        cube([PIECE_D * 2, 5, CHANNEL_H], center=true);
+    }
 }
 
-piece();
+//translate([0,0,5])
+//string_rider();
+
+//*
+//for (i = [0:CAPACITY-1]) {
+//    translate([0,0,i*PIECE_H])
+//    translate([0,0,THICKNESS])
+//    #piece();
+//}
+
+//piece();
