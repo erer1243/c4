@@ -135,7 +135,7 @@ module hot_hamburg_sandwich() {
 //#piece();
 
 module mag() {
-    CAPACITY = 3;
+    CAPACITY = 23;
     ANGLE = 160;
     WALLS_HEIGHT = CAPACITY * PIECE_H + THICKNESS;
 
@@ -156,7 +156,7 @@ module mag() {
     square([THICKNESS, THICKNESS]);
 }
 
-*%mag();
+//mag();
 
 module string_rider() {
     difference() {

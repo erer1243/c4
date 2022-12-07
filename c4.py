@@ -1,19 +1,19 @@
 #!/usr/bin/env python3
-import sys, os, time, threading, signal, random, math, logging
+import sys, os, time, threading, signal, math, subprocess, pprint, itertools
 from functools import reduce
 import numpy as np
 import cv2
-import serial
 
 sys.dont_write_bytecode = True
 import colors
 from colors import (
-    LOWER_BLUE, UPPER_BLUE, LOWER_YELLOW, UPPER_YELLOW, LOWER_RED_1,
+    LOWER_BLUE, UPPER_BLUE, LOWER_YELLOW, UPPER_YELLOW,
     UPPER_RED_1, LOWER_RED_1, UPPER_RED_2, LOWER_RED_2, MASK_BLUR
 )
 
 try:
     import kipr
+    _ = kipr
 except:
     print("no kipr")
 
@@ -37,9 +37,6 @@ def screen_on_loop():
 
 RPI = system("uname -m") == "aarch64"
 if RPI: threading.Thread(target=screen_on_loop, daemon=True).start()
-
-def open_arduino_serial():
-    return serial.Serial('/dev/ttyACM0', baudrate=115200)
 
 YELLOW_SLIDERS = [
     ('YLH', 179, LOWER_YELLOW, 0),
@@ -78,7 +75,7 @@ BLUR_SLIDERS = [
 SLIDERS = []
 SLIDERS += BLUE_SLIDERS
 SLIDERS += YELLOW_SLIDERS
-SLIDERS += RED_SLIDERS
+# SLIDERS += RED_SLIDERS
 # SLIDERS += BLUR_SLIDERS
 if RPI: SLIDERS = []
 
@@ -95,15 +92,16 @@ def save_colors(*_args, **_kwargs):
             except:
                 pass
 
-cv2.namedWindow('Connect4', cv2.WINDOW_NORMAL)
-cv2.createButton("Save Colors", save_colors)
-for (name, nmax, arr, idx) in SLIDERS:
-    def assign(arr, idx, val): arr[idx] = val
-    if "BLUR" in name:
-        lam = lambda n, arr=arr, idx=idx: assign(arr, idx, 2 * int(n / 2) + 1)
-    else:
-        lam = lambda n, arr=arr, idx=idx: assign(arr, idx, n)
-    cv2.createTrackbar(name, 'Connect4', arr[idx], nmax, lam)
+if __name__ == "__main__":
+    cv2.namedWindow('Connect4', cv2.WINDOW_NORMAL)
+    cv2.createButton("Save Colors", save_colors)
+    for (name, nmax, arr, idx) in SLIDERS:
+        def assign(arr, idx, val): arr[idx] = val
+        if "BLUR" in name:
+            lam = lambda n, arr=arr, idx=idx: assign(arr, idx, 2 * int(n / 2) + 1)
+        else:
+            lam = lambda n, arr=arr, idx=idx: assign(arr, idx, n)
+        cv2.createTrackbar(name, 'Connect4', arr[idx], nmax, lam)
 
 def make_get_mask(lower_upper_pairs):
     def get_mask(lups, frame):
@@ -180,30 +178,203 @@ def dist(a, b):
     dy = a[1] - b[1]
     return int(math.sqrt(dx * dx + dy * dy))
 
-def fst(l): l[0]
-def snd(l): l[1]
+PIECE_NEAR_POINT_RADIUS = 5/320 * CAP_RESOLUTION[0]
+def fst(l): return l[0]
+def snd(l): return l[1]
 def divine_board(ps, ys, rs):
     # Verify a sensible board
-    if len(ps) != 42:
-        return "Not enough position markers"
-    # for kp in ps:
-    kp = ps[0]
-    dist_to_kp = lambda kp2, kp=kp: [kp2, dist(kp.pt, kp2.pt)]
-    ps_close = sorted(map(dist_to_kp, ps), key=snd)
-    return list(map(fst, ps_close))
+    assert len(ps) == 42, "not 42 keypoints"
+    assert len(ys) <= 20, "more than 20 yellow pieces"
+    assert len(rs) <= 21, "more than 21 red pieces"
 
-def watch_mask():
+    mappt = lambda i: list(map(lambda p: p.pt, i))
+    ps = mappt(ps)
+    ys = mappt(ys)
+    rs = mappt(rs)
+
+    ps_l2r = list(sorted(ps, key=fst))
+    lrss = lambda l: list(reversed(sorted(l, key=snd)))
+    ps_l2r_b2t = lrss(ps_l2r[:6]) + lrss(ps_l2r[6:12]) \
+                  + lrss(ps_l2r[12:18]) + lrss(ps_l2r[18:24]) \
+                  + lrss(ps_l2r[24:30]) + lrss(ps_l2r[30:36]) \
+                  + lrss(ps_l2r[36:42])
+
+    ps_sorted = list(map(lambda p: (int(p[0]), int(p[1])), ps_l2r_b2t))
+
+    board = "_" * 42
+    pieces_in_board = 0
+    for (c, p) in itertools.chain(map(lambda p: ('y', p), ys), map(lambda p: ('r', p), rs)):
+
+        near_ps = list(sorted(map(lambda ip, p_=p: (ip[0], dist(ip[1], p_)), enumerate(ps_sorted)), key=snd))
+        near_p = near_ps[0]
+        if near_p[1] <= PIECE_NEAR_POINT_RADIUS:
+            i = near_p[0]
+            assert board[i] == "_", "two pieces in the same spot?"
+            board = board[:i] + c + board[i+1:]
+            pieces_in_board += 1
+
+    assert pieces_in_board == len(ys) + len(rs), "some pieces are in a weird spot"
+    return ps_sorted, board
+
+def strrep(s, i, c):
+    return s[:i] + c + s[i+1:]
+
+# This class assumes red always goes first!
+class Board:
+    def __init__(self, board):
+        # 1-indexed, like c4solver
+        if type(board) == int:
+            self.board = "_" * 42
+            red = True
+            while board > 0:
+                x = (board % 10) - 1
+                board = int(board / 10)
+                for y in range(6):
+                    if self.piece_at(x, y) == "_":
+                        i = Board.index(x, y)
+                        self.board = strrep(self.board, i, "r" if red else "y")
+                        break
+                red = not red
+        elif type(board) == str:
+            assert len(board) == 42, f"{len(board)=}"
+            self.board = board
+        else:
+            raise TypeError("board must be a str or int")
+
+        self.assert_makes_sense()
+
+    def index(x, y):
+        assert y < 6 and y >= 0, "y out of bounds"
+        assert x < 7 and x >= 0, "x out of bounds"
+        return x * 6 + y
+
+    def piece_at(self, x, y):
+        i = Board.index(x, y)
+        return self.board[i]
+
+    def piece_at_oob_safe(self, x, y):
+        if x < 0 or x >= 7 or y < 0 or y >= 6:
+            return '_'
+        else:
+            return self.piece_at(x, y)
+
+    def get_next_move(self):
+        if os.path.isfile("/home/user/connect4/c4solver"):
+            path = "/home/user/connect4/c4solver"
+        else:
+            path = "/connect4/c4solver"
+
+        moves, red, yellow, mask = self.format_c4solver()
+        cur_player = red if moves % 2 == 0 else yellow
+        line = ("#" + str(cur_player) + " " + str(mask) + " " + str(moves) + "\n").encode('utf-8')
+
+        p = subprocess.Popen([path], cwd=os.path.dirname(path), stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
+        p.stdin.write(line)
+        p.stdin.close()
+        answer = p.stdout.readline().decode('utf-8').split()
+        p.wait(5)
+
+        max_i = next(sorted(enumerate(answer), key=snd))[0]
+        return max_i
+
+    def assert_makes_sense(self):
+        for x in range(7):
+            for y in range(1,6):
+                if self.piece_at(x, y) != "_":
+                    assert self.piece_at(x, y-1) != "_", "Floating piece"
+                else:
+                    break
+
+    def format_c4solver(self):
+        # BOTTOM_N = 1 | 1 << 7 | 1 << 14 | 1 << 21 | 1 << 28 | 1 << 35 | 1 << 42
+        board_spaced = ""
+        for x in range(7):
+            for y in range(6):
+                board_spaced += self.piece_at(x, y)
+            board_spaced += "_"
+
+        red_n = 0
+        yellow_n = 0
+        mask_n = 0
+        moves = 0
+        for (i, c) in enumerate(board_spaced):
+            if c == 'r':
+                red_n |= 1 << i
+                moves += 1
+            elif c == 'y':
+                yellow_n |= 1 << i
+                moves += 1
+
+        return moves, red_n, yellow_n, mask_n
+
+# BOARD = "_" * 42
+
+# def get_board_at(x, y):
+#     global BOARD
+#     if x < 0 or x >= 7 or y < 0 or y >= 6:
+#         return '_'
+#     i = pos_to_idx(x, y)
+#     return BOARD[i]
+
+# def set_board_at(c, x, y):
+#     global BOARD
+#     i = pos_to_idx(x, y)
+#     return BOARD[:i] + c + BOARD[i+1:]
+
+#     # print(format(pos_n, 'b'), format(mask_n, 'b'))
+#     # print(f"{pos_n=} {mask_n=} {pos_n + mask_n=} {pos_n + mask_n + BOTTOM_N=}")
+#     print(f"{pos_n=} {mask_n=} {moves=}")
+#     return pos_n, mask_n, moves
+
+# def get_next_move():
+
+# def play_pos(c, x, y):
+#     global BOARD
+#     old_board = BOARD
+#     try:
+#         pos_to_idx(x, y) # assert good indices
+#         assert c == 'r' or c == 'y', "invalid char"
+#         assert get_board_at(x, y) == '_', "spot already taken"
+#         new_board = set_board_at(c, x, y)
+#         assert len(BOARD) == len(new_board), "invalid new len"
+#         assert y == 0 or get_board_at(x, y-1) != "_", "floating piece"
+#         BOARD = new_board
+#         assert board_makes_sense(), "board senseless"
+#         return True
+#     except Exception as e:
+#         BOARD = old_board
+#         return False, str(e)
+
+
+READ_SECS = 4
+def read_board():
+    start = time.time()
+    while time.time() - start < READ_SECS:
+        pass
+
+def wait_key():
+    key = cv2.waitKey(30) & 0xff
+    if key == ord('q'):
+        sys.exit()
+    elif key == ord('s'):
+        save_colors()
+    elif key == 13: # enter
+        print(BOARD)
+        if board_makes_sense():
+            get_next_move()
+        else:
+            print("Board is senseless!")
+    elif key == 43: # plus
+        pass
+    elif key == 45: # minus
+        pass
+    elif key == 8: # bksp
+        pass
+
+if __name__ == "__main__":
     vid = open_webcam()
-    x = 0
 
-    def wait_key():
-        key = cv2.waitKey(30) & 0xff
-        if key == ord('q'):
-            sys.exit()
-        elif key == ord('s'):
-            save_colors()
-
-    while True:
+def read_board_one_frame():
         # Get frame
         _ret, frame = vid.read()
         hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
@@ -216,8 +387,7 @@ def watch_mask():
         # Get the contour around the board
         board_contours, _hierarchy = cv2.findContours(board_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
         if len(board_contours) == 0:
-            wait_key()
-            continue
+            return "No board contour", frame
         board_contour = max(board_contours, key=cv2.contourArea)
 
         # Detect piece positions
@@ -225,30 +395,61 @@ def watch_mask():
         y_kps = detect_blobs_in_contour(cv2.bitwise_not(yellow_mask), board_contour)
         r_kps = detect_blobs_in_contour(cv2.bitwise_not(red_mask), board_contour)
 
+        divined = None
+        try:
+            if len(pos_kps) == 42 and len(y_kps) <= 20 and len(r_kps) <= 21:
+                divined = divine_board(pos_kps, y_kps, r_kps)
+        except Exception as e:
+            print(e)
+
         # Make drawing frames
         final = apply_mask(frame, board_mask)
 
         # Draw stuff on drawing frames
         frame = draw_contour(frame, board_contour, color=(255, 0, 0), width=4)
-        board_mask = draw_keypoints(grayToBGR(board_mask), pos_kps, (255, 255, 255))
+        board_mask = draw_keypoints(grayToBGR(board_mask), pos_kps, (255, 0, 255))
         # final = draw_keypoints(final, pos_kps, (255, 255, 255))
         final = draw_keypoints(final, y_kps, (0, 255, 255))
         final = draw_keypoints(final, r_kps, (0, 0, 255))
 
-        # x += 1
-        # if x % 100 == 0:
-        # x = divine_board(pos_keypoints, y_keypoints, r_keypoints)
-        # if type(x) == list:
-        #     print(x)
+        if divined:
+            sorted_pos_kps = divined[0]
+            board = divined[1]
+            global BOARD
+            BOARD = board
+            for (i, p) in enumerate(sorted_pos_kps):
+                offset = 8
+                p = (p[0] - offset, p[1] + offset)
+                if board[i] == "_":
+                    color = (255, 255, 255)
+                elif board[i] == "r":
+                    color = (0, 0, 255)
+                else: # board[i] == "y":
+                    color = (0, 255, 255)
+                final = cv2.putText(final, str(i), p, cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 1, cv2.LINE_AA)
 
-        imshow_n([
-            frame,
-            board_mask,
-            yellow_mask,
-            red_mask,
-            final,
-        ])
+        return {
+            "frame": frame,
+            "board_mask": board_mask,
+            "yellow_mask": yellow_mask,
+            "red_mask": red_mask,
+            "final": final
+        }
+
+def watch_mask():
+    while True:
+
+        x = read_board_one_frame()
+
+        if type(x) == tuple: # Error
+            frames = [x[1]]
+        else: # No error
+            frames = [x["board_mask"], x["yellow_mask"], x["red_mask"], x["final"]]
+            # frames = list(x.values())
+
+        imshow_n(frames)
 
         wait_key()
 
-watch_mask()
+if __name__ == "__main__":
+    watch_mask()

@@ -56,6 +56,166 @@ module ramp() {
 
 }
 
+module rotramp(height, dz, angle, width, depth) {
+//    translate([width/2, depth/2, dz/2])
+    for (z = [0:dz:height-dz]) {
+        hull() {
+            for (i = [0,1]) {
+                rotate([0,0,(z + i*dz)/height * -angle])
+                translate([0, 0, z + i*dz])
+                cube([width, depth, dz], center=false);
+            }
+        }
+    }
+}
+
+//RAMP_RUN = PIECE_D * 1.5;
+//RAMP_ANGLE = 90;
+//RAMP_WIDTH = PIECE_D;
+
+//cube([THICKNESS, RAMP_RUN, PIECE_D]);
+
+RAMP_RUN = PIECE_D;
+RAMP_HEIGHT_GUESS = PIECE_D + 12; // This depends on STRETCH
+STRETCH = 15;
+RAMP_WIDTH = PIECE_D * 0.75;
+
+
+SLIDEY_COEFF = 1.9;
+RAMP_ANGLE=30;
+intersection() {
+    scale([1, 1, 1.2])
+    translate([6.4, 0])
+    translate([0, 0, 1.2 * RAMP_WIDTH])
+    rotate([0, 90 - RAMP_ANGLE])
+    translate([SLIDEY_COEFF * RAMP_WIDTH - 10, 0, 0])
+    mirror([1,0,0])
+    rotate([-90, 0, 0])
+    rotramp(RAMP_RUN, $preview ? 1 : 0.05, RAMP_ANGLE, SLIDEY_COEFF * RAMP_WIDTH, THICKNESS);
+
+    cube(100);
+}
+
+//translate([30, 0, 0])
+//mirror([1,0])
+//rotate([0, 30, 10])
+//cube([THICKNESS, RAMP_RUN, RAMP_HEIGHT_GUESS]);
+
+translate([RAMP_WIDTH, 0])
+rotate([0, 90, 0])
+%piece();
+
+//translate([0, RAMP_RUN, 0])
+//rotate([90, 0, 0])
+//intersection()  {
+//    translate([-STRETCH, 0, 0])
+//    oval_prism(RAMP_RUN, PIECE_D + STRETCH - THICKNESS/2, RAMP_WIDTH + STRETCH);
+//    cube(10 * STRETCH);
+//}
+
+//mirror([1,0])
+//cube([THICKNESS, RAMP_RUN, RAMP_HEIGHT_GUESS + PIECE_H]);
+
+CUPPER_CUTOFF = 15;
+CUPPER_LOW_HEIGHT = 30;
+
+module cupper_bounds() {
+    translate([0, -CUPPER_CUTOFF])
+    hull() {
+        cube([1, CUPPER_CUTOFF, RAMP_HEIGHT_GUESS]);
+        translate([PIECE_D,0])
+        cube([1, CUPPER_CUTOFF, CUPPER_LOW_HEIGHT]);
+    }
+}
+
+intersection() {
+    translate([PIECE_D/2, -PIECE_D/2 - 2*THICKNESS]) {
+//        %mag();
+        cylinder_tube(RAMP_HEIGHT_GUESS, (PIECE_D + 4 * THICKNESS)/2, THICKNESS);
+    }
+
+    cupper_bounds();
+}
+
+intersection() {
+    mirror([0, 1, 0])
+    cube([PIECE_D, THICKNESS, RAMP_HEIGHT_GUESS]);
+    cupper_bounds();
+}
+
+intersection() {
+    cupper_bounds();
+    mirror([0,1,0])
+    cube([THICKNESS, CUPPER_CUTOFF - 6, RAMP_HEIGHT_GUESS]);
+}
+
+intersection() {
+    cupper_bounds();
+    translate([THICKNESS, 0])
+    mirror([0,1,0])
+    cube([THICKNESS, CUPPER_CUTOFF - 8.5, RAMP_HEIGHT_GUESS]);
+}
+
+intersection() {
+    cupper_bounds();
+    translate([PIECE_D - THICKNESS, 0])
+    mirror([0,1,0])
+    cube([THICKNESS, CUPPER_CUTOFF - 6, RAMP_HEIGHT_GUESS]);
+}
+
+intersection() {
+    cupper_bounds();
+    translate([PIECE_D - 2*THICKNESS, 0])
+    mirror([0,1,0])
+    cube([THICKNESS, CUPPER_CUTOFF - 8.5, RAMP_HEIGHT_GUESS]);
+}
+
+cube([20, RAMP_RUN, THICKNESS]);
+
+hull(){
+translate([0, RAMP_RUN, 0])
+cube([25, THICKNESS, PIECE_D]);
+
+cube([THICKNESS, RAMP_RUN, PIECE_D]);
+}
+translate([RAMP_WIDTH, 0, 0]) {
+    mirror([0,1])
+    cube([PIECE_H, THICKNESS, CUPPER_LOW_HEIGHT]);
+
+    hull() {
+        mirror([0,1])
+        translate([-10, 0, 10])
+        cube([PIECE_H+10, 1, THICKNESS]);
+
+        translate([-10, RAMP_RUN, 0])
+        cube([PIECE_H+10, 1, THICKNESS]);
+
+        cube([PIECE_H, RAMP_RUN, 1]);
+    }
+
+    translate([PIECE_H, -10, 0])
+    cube([THICKNESS, RAMP_RUN + 10, 40]);
+
+    // Grabbing platform
+    translate([0, RAMP_RUN, 0])
+    {
+        GRAB_LEN = PIECE_D / 1.333;
+        cube([PIECE_H, GRAB_LEN, THICKNESS]);
+
+        translate([-THICKNESS, 0, 0])
+        cube([THICKNESS, GRAB_LEN, PIECE_D / 2]);
+
+        translate([PIECE_H, 0, 0])
+        cube([THICKNESS, GRAB_LEN, PIECE_D / 2]);
+
+        translate([-THICKNESS, GRAB_LEN, 0])
+        cube([PIECE_H + 2*THICKNESS, THICKNESS, PIECE_D / 3]);
+    }
+}
+
+//    cube([1, 1, 1])
+
+//translate([PIECE_D/2,0]) piece();
 /////////////////
 // OTHER STUFF //
 /////////////////
