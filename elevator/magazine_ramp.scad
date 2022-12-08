@@ -80,6 +80,7 @@ RAMP_HEIGHT_GUESS = PIECE_D + 12; // This depends on STRETCH
 STRETCH = 15;
 RAMP_WIDTH = PIECE_D * 0.75;
 
+module ramp() {
 
 SLIDEY_COEFF = 1.9;
 RAMP_ANGLE=30;
@@ -212,6 +213,10 @@ translate([RAMP_WIDTH, 0, 0]) {
         cube([PIECE_H + 2*THICKNESS, THICKNESS, PIECE_D / 3]);
     }
 }
+}
+//ramp();
+// Ramp right wall raise / extension
+//!cube([THICKNESS, RAMP_RUN + 10, 15]);
 
 //    cube([1, 1, 1])
 
@@ -232,26 +237,25 @@ SLOT_LENGTH = 11;
 //SLOT_DIAM = SLOT_RADIUS * 2;
 
 module slot_leg_test() {
-    cube([SLOT_WIDTH, SLOT_LENGTH, 20]);
+    cube([SLOT_WIDTH, SLOT_LENGTH, 15]);
 }
 
+LEG_HEIGHT = 150;
+LEG_WIDTH = 17;
+LEG_DEPTH = 6;
+
+THICK_HEIGHT = LEG_HEIGHT - 50;
+THICK_WIDTH = LEG_WIDTH;
+THICK_DEPTH = 12;
+
+LEG_SLOT_MALE_HEIGHT = 5;
+CHANNEL_WIDTH = 4;
+CHANNEL_DEPTH = 8;
+
+CHANNEL_START_HEIGHT = LEG_HEIGHT - 20;
+CHANNEL_GRAB_HEIGHT = LEG_HEIGHT - 85;
+CHANNEL_GRAB_THICKNESS = 1.5;
 module board_leg() {
-    LEG_HEIGHT = 150;
-    LEG_WIDTH = 17;
-    LEG_DEPTH = 6;
-
-    THICK_HEIGHT = LEG_HEIGHT - 50;
-    THICK_WIDTH = LEG_WIDTH;
-    THICK_DEPTH = 12;
-
-    LEG_SLOT_MALE_HEIGHT = 5;
-    CHANNEL_WIDTH = 4;
-    CHANNEL_DEPTH = 8;
-
-    CHANNEL_START_HEIGHT = LEG_HEIGHT - 20;
-    CHANNEL_GRAB_HEIGHT = LEG_HEIGHT - 85;
-    CHANNEL_GRAB_THICKNESS = 1.5;
-
     difference() {
         // main body
         hull() {
@@ -274,3 +278,60 @@ module board_leg() {
 }
 
 //board_leg();
+
+module board_leg_track_adapter() {
+    scale([1.05, 1.05, 1])
+    difference() {
+        cube([THICK_WIDTH + 2*THICKNESS, THICK_DEPTH + 2*THICKNESS, 10]);
+        translate([THICKNESS, THICKNESS, -0.5])
+        cube([THICK_WIDTH, THICK_DEPTH, 11]);
+    }
+
+    cube([95, THICK_DEPTH + 2*THICKNESS, 1]);
+
+
+}
+
+//board_leg_track_adapter();
+
+module track_wall() {
+    TRACK_WIDTH = 23.5;
+    cube([THICKNESS, 20, 5]);
+
+    translate([THICKNESS,0])
+    cube([TRACK_WIDTH, 20, 1]);
+
+    translate([TRACK_WIDTH + THICKNESS, 0])
+    cube([THICKNESS, 20, 5]);
+}
+
+//track_wall();
+
+GUARD_WALL_LEN = 257;
+//GUARD_WALL_LEN=20;
+GUARD_HEIGHT = 5;
+
+module halfwall()
+{
+cube([THICKNESS, GUARD_WALL_LEN/2, GUARD_HEIGHT]);
+
+translate([-0.2, -8, 0])
+mirror([1, 0, 0])
+rotate([0, 0, 20])
+cube([THICKNESS, 10, GUARD_HEIGHT]);
+}
+
+module fullwall()
+{
+    halfwall();
+
+    translate([0, GUARD_WALL_LEN, 0])
+    mirror([0, 1, 0])
+    halfwall();
+}
+halfwall();
+//translate([DROP_WIDTH + THICKNESS, 0, 0])
+//mirror([1, 0, 0])
+//wall();
+
+//cube([SLOT_LENGTH, SLOT_WIDTH, LEG_SLOT_MALE_HEIGHT ]);

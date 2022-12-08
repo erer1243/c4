@@ -134,8 +134,8 @@ module hot_hamburg_sandwich() {
 //rotate([90,0,0])
 //#piece();
 
-module mag() {
-    CAPACITY = 23;
+module mag(asHu) {
+    CAPACITY = 15;
     ANGLE = 160;
     WALLS_HEIGHT = CAPACITY * PIECE_H + THICKNESS;
 
@@ -156,8 +156,6 @@ module mag() {
     square([THICKNESS, THICKNESS]);
 }
 
-//mag();
-
 module string_rider() {
     difference() {
         cylinder(d=PIECE_D / WIGGLE_COEFF, h=PIECE_H);
@@ -168,6 +166,18 @@ module string_rider() {
         cube([PIECE_D * 2, 5, CHANNEL_H], center=true);
     }
 }
+
+//difference() {
+//    X = -5;
+//    Y = THICKNESS;
+//
+//    translate([-X/2, 0, 0])
+//    cube([2 * MAG_R + X, MAG_R + Y, 20]);
+//
+//    MAG_R = PIECE_D/2 + THICKNESS;
+//    translate([MAG_R, 0, -1])
+//    cylinder(h=22, r=MAG_R);
+//}
 
 //translate([0,0,5])
 //string_rider();
