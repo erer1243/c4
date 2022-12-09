@@ -44,6 +44,16 @@ def screen_on_loop():
 RPI = system("uname -m") == "aarch64"
 if RPI: threading.Thread(target=screen_on_loop, daemon=True).start()
 
+HIT = False
+def start_hit():
+    global HIT
+    HIT = False
+    def await_hit(*args, **kwargs):
+        global HIT
+        input("Press enter to stop ")
+        HIT = True
+    threading.Thread(target=await_hit).start()
+
 YELLOW_SLIDERS = [
     ('YLH', 179, LOWER_YELLOW, 0),
     ('YLS', 255, LOWER_YELLOW, 1),
@@ -80,6 +90,7 @@ BLUR_SLIDERS = [
 ]
 
 DEBUG = "sliders" in sys.argv
+CHEATS = "cheats" in sys.argv
 
 if DEBUG:
     SLIDERS = BLUE_SLIDERS
@@ -301,6 +312,7 @@ class Board:
         print(answer)
 
         max_i = list(sorted(enumerate(map(int, answer)), key=snd))[-1][0]
+        print(f"I want to play column {max_i}")
         return max_i
 
     def format_c4solver(self):
@@ -336,7 +348,8 @@ class Board:
 # Motor 1 = wheel
 # Motor 2 = magazine
 # Servo 0 = grabber
-# Sensor 0 = magazine dist
+# Analog 0 = magazine dist
+# Digital 0 = refill bump button
 class Robot:
     def __init__(self):
         self.pos = 0
@@ -348,7 +361,7 @@ class Robot:
         time.sleep(0.3)
 
     def unclamp(self):
-        kipr.set_servo_position(0, 900)
+        kipr.set_servo_position(0, 800)
         time.sleep(0.3)
 
     def move(self, amt):
@@ -356,7 +369,6 @@ class Robot:
         sign = 1 if amt > 0 else -1
         speed = sign * 400
         kipr.mav(0, speed)
-        kipr.mav(1, -speed)
         time.sleep(sign * amt)
         kipr.ao()
 
@@ -364,21 +376,36 @@ class Robot:
         if pos != self.pos:
             self.move(pos - self.pos)
 
-    def move_to(self, known_pos):
-        POSITIONS = {
-            "refill": 0,
-            0: 1.35,
-            1: 2,
-            2: 3,
-            3: 4,
-            4: 5,
-            5: 6,
+    def move_to(self, column):
+        POSITIONS = { # 0 is all the way left, so it's the furthest
+            0: 4.80,
+            1: 4.25,
+            2: 3.65,
+            3: 2.9,
+            4: 2.1,
+            5: 1.35,
         }
-        assert known_pos in POSITIONS, f"unknown position {known_pos}"
-        self.move_to_pos(POSITIONS[known_pos])
+        if column == 'refill':
+            kipr.mav(0, -300)
+            while kipr.digital(0) == 0:
+                time.sleep(0.025)
+            kipr.ao()
+            self.pos = 0
+            return
+
+        if CHEATS:
+            start_hit()
+            kipr.mav(0, 300)
+            while not HIT:
+                time.sleep(0.05)
+            kipr.ao()
+            return
+
+        assert column in POSITIONS, f"unknown position {column}"
+        self.move_to_pos(POSITIONS[column])
 
     def mag_wind(self):
-        WIND_SPEED = 600
+        WIND_SPEED = 400
         kipr.mav(1, WIND_SPEED)
         while kipr.analog(0) > 2500:
             time.sleep(5 / 1000)
@@ -449,6 +476,7 @@ def divine_board(ps, ys, rs):
             pieces_in_board += 1
 
     assert pieces_in_board == len(ys) + len(rs), "some pieces are in a weird spot"
+
     return ps_sorted, board
 
 def read_board_one_frame():
@@ -456,17 +484,17 @@ def read_board_one_frame():
         frame = get_frame()
         hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
 
-        gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-        gray = cv2.medianBlur(gray, 5)
-        rows = gray.shape[0]
-        circles = cv2.HoughCircles(gray, cv2.HOUGH_GRADIENT, 1, rows / 8, param1=100, param2=30, minRadius=10, maxRadius=30)
+        # gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+        # gray = cv2.medianBlur(gray, 5)
+        # rows = gray.shape[0]
+        # circles = cv2.HoughCircles(gray, cv2.HOUGH_GRADIENT, 1, rows / 8, param1=100, param2=30, minRadius=10, maxRadius=30)
 
-        if circles is not None:
-            circles = np.uint16(np.around(circles))
-            for i in circles[0, :]:
-                center = (i[0], i[1])
-                radius = i[2]
-                cv2.circle(frame, center, radius, (255, 0, 255), 3)
+        # if circles is not None:
+        #     circles = np.uint16(np.around(circles))
+        #     for i in circles[0, :]:
+        #         center = (i[0], i[1])
+        #         radius = i[2]
+        #         cv2.circle(frame, center, radius, (255, 0, 255), 3)
 
         # Get color-based masks
         board_mask = get_board_mask(hsv)
@@ -545,11 +573,10 @@ def read_board():
             if read["error"] != None:
                 print("read_board:", read["error"])
                 frame = read["frame"]
-                frame = draw_text(frame, f"{len(boards)}", (0, 50), color=(0, 0, 255), fontScale=2, thickness=2)
                 final = read.get("final")
-                frames = [frame]
-                if type(final) != type(None): frames.append(final)
-                imshow_n(frames)
+                if type(final) != type(None): frame = final
+                frame = draw_text(frame, f"{len(boards)}", (0, 50), color=(0, 0, 255), fontScale=2, thickness=2)
+                imshow_n([frame])
                 wait_key()
                 continue
 
@@ -564,23 +591,43 @@ def read_board():
         preferred_board = max(boards, key=boards.count)
         n_preferred = boards.count(preferred_board)
         if n_preferred / len(boards) > ACCEPTABLE_CONFIDENCE:
-            return preferred_board
+            return preferred_board, read["frame"], read["divined"][0]
+
+def show_message(msg):
+    img = np.ones((400, 400, 3), dtype=np.uint8)
+    img *= 255
+    img = draw_text(img, msg, (10, 200), thickness=2, fontScale=2, color=(0, 0, 0))
+    imshow_n([img])
+    wait_key()
 
 def play():
     r = Robot()
     board_str = None
     while True:
-        board_str = read_board()
+        show_message("My Turn!")
+        time.sleep(2)
+        board_str, frame, pos_kps = read_board()
         board = Board(board_str)
 
         if board.spaces_empty() <= 1:
-            print("Board appears to be full")
+            show_message("Draw!")
+            time.sleep(5)
             return
 
         x = board.get_next_move()
         y = board.row_if_col_played(x)
         my_color = board.whos_turn_is_it()
         will_win = board.is_winning_move(my_color, x)
+
+        bottom_kp = pos_kps[x*6]
+        top_kp = pos_kps[x*6 + 5]
+        cv2.line(frame, bottom_kp, top_kp, (0, 255, 0), 3)
+        kp_to_play = pos_kps[x*6 + y]
+        cv2.circle(frame, kp_to_play, 5, (0, 0, 255) if my_color == 'r' else (0, 255, 255), -1)
+        imshow_n([frame])
+        wait_key()
+        time.sleep(2)
+
         input("Press enter when piece ready. ")
         r.clamp()
         time.sleep(0.5)
@@ -592,15 +639,17 @@ def play():
         time.sleep(0.5)
 
         if will_win:
-            won_board_str = read_board()
+            won_board_str = read_board()[0]
             won_board = Board(won_board_str)
             if won_board.piece_at(x, y) == my_color:
-                print("I won!")
+                show_message("I Won!")
+                time.sleep(5)
                 return
 
         while True:
+            show_message("Your Turn!")
             time.sleep(5)
-            new_board_str = read_board()
+            new_board_str = read_board()[0]
             new_board = Board(new_board_str)
             if new_board.spaces_empty() - board.spaces_empty():
                 break
