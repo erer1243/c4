@@ -39,6 +39,7 @@ signal.signal(signal.SIGINT, lambda *_:  sys.exit(1))
 def screen_on_loop():
     while True:
         system("xset dpms force on")
+        system("xset s off")
         time.sleep(30)
 
 RPI = system("uname -m") == "aarch64"
@@ -184,7 +185,7 @@ def apply_mask(frame, mask):
 
 BLOB_DET = cv2.SimpleBlobDetector_create()
 BLOB_RAD = 20
-BLOB_RAD_ALLOWANCE = 15
+BLOB_RAD_ALLOWANCE = 10
 def detect_blobs_in_contour(frame, contour):
     keypoints = BLOB_DET.detect(frame)
     keypoints = filter(lambda kp: abs(kp.size - BLOB_RAD) <= BLOB_RAD_ALLOWANCE, keypoints)
@@ -357,7 +358,7 @@ class Robot:
         self.unclamp()
 
     def clamp(self):
-        kipr.set_servo_position(0, 600)
+        kipr.set_servo_position(0, 500)
         time.sleep(0.3)
 
     def unclamp(self):
@@ -506,6 +507,8 @@ def read_board_one_frame():
         if len(board_contours) == 0:
             return { "error": "No board contour", "frame": frame, "final": frame, "board_mask": board_mask, "yellow_mask": yellow_mask, "red_mask": red_mask }
         board_contour = max(board_contours, key=cv2.contourArea)
+        board_only_mask = np.zeros(board_mask.shape, board_mask.dtype)
+        cv2.fillPoly(board_only_mask, pts=[board_contour], color=255)
 
         # Detect piece positions
         pos_kps = detect_blobs_in_contour(board_mask, board_contour)
@@ -523,7 +526,7 @@ def read_board_one_frame():
             divined_err = f"divining: {e}"
 
         # Make drawing frames
-        final = apply_mask(frame, board_mask)
+        final = apply_mask(frame, board_only_mask)
 
         # Draw stuff on drawing frames
         frame = draw_contour(frame, board_contour, color=(255, 0, 0), width=4)
@@ -563,7 +566,7 @@ def read_board_one_frame():
 def draw_text(frame, text, pos, thickness=1, fontScale=0.5, color=(255, 255, 255)):
     return cv2.putText(frame, text, pos, cv2.FONT_HERSHEY_SIMPLEX, fontScale, color, thickness, cv2.LINE_AA)
 
-READ_BOARDS = 50 # Number of frames where we can parse a board, before we finish "reading"
+READ_BOARDS = 20 # Number of frames where we can parse a board, before we finish "reading"
 ACCEPTABLE_CONFIDENCE = 0.85
 def read_board():
     while True:
@@ -594,20 +597,27 @@ def read_board():
             return preferred_board, read["frame"], read["divined"][0]
 
 def show_message(msg):
-    img = np.ones((400, 400, 3), dtype=np.uint8)
-    img *= 255
-    img = draw_text(img, msg, (10, 200), thickness=2, fontScale=2, color=(0, 0, 0))
+    img = np.zeros((400, 400, 3), dtype=np.uint8)
+    # img = np.ones((400, 400, 3), dtype=np.uint8)
+    # img *= 255
+    img = draw_text(img, msg, (10, 200), thickness=2, fontScale=2, color=(255, 255, 255))
     imshow_n([img])
     wait_key()
 
 def play():
     r = Robot()
-    board_str = None
+    first = True
+    show_message("My Turn!")
+    time.sleep(2)
+    board_str, frame, pos_kps = read_board()
     while True:
-        show_message("My Turn!")
-        time.sleep(2)
-        board_str, frame, pos_kps = read_board()
         board = Board(board_str)
+
+        if first:
+            first = False
+        else:
+            show_message("My Turn!")
+            time.sleep(2)
 
         if board.spaces_empty() <= 1:
             show_message("Draw!")
@@ -649,9 +659,12 @@ def play():
         while True:
             show_message("Your Turn!")
             time.sleep(5)
-            new_board_str = read_board()[0]
+            new_board_str, new_frame, new_pos_kps = read_board()
             new_board = Board(new_board_str)
-            if new_board.spaces_empty() - board.spaces_empty():
+            if board.spaces_empty() - new_board.spaces_empty()  == 2:
+                board_str = new_board_str
+                frame = new_frame
+                pos_kps = new_pos_kps
                 break
 
 

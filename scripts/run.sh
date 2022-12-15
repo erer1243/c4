@@ -3,7 +3,7 @@ export DISPLAY=:0
 if [ ! -f /.dockerenv ]; then
   DIR=$( cd -- "$( dirname -- "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )
   cd "$DIR"
-  docker-compose build
+  # docker-compose build
   xhost si:localuser:root >/dev/null
   docker-compose run c4 "$@"
   docker-compose down --remove-orphans
@@ -14,6 +14,6 @@ else
   if [ -n "$*" ]; then
     exec "$@"
   else
-    exec /c4/c4.py
+    exec /c4/c4.py cheats
   fi
 fi

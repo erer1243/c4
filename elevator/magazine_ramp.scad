@@ -84,35 +84,35 @@ module ramp() {
 
 SLIDEY_COEFF = 1.9;
 RAMP_ANGLE=30;
-intersection() {
-    scale([1, 1, 1.2])
-    translate([6.4, 0])
-    translate([0, 0, 1.2 * RAMP_WIDTH])
-    rotate([0, 90 - RAMP_ANGLE])
-    translate([SLIDEY_COEFF * RAMP_WIDTH - 10, 0, 0])
-    mirror([1,0,0])
-    rotate([-90, 0, 0])
-    rotramp(RAMP_RUN, $preview ? 1 : 0.05, RAMP_ANGLE, SLIDEY_COEFF * RAMP_WIDTH, THICKNESS);
-
-    cube(100);
-}
+//intersection() {
+//    scale([1, 1, 1.2])
+//    translate([6.4, 0])
+//    translate([0, 0, 1.2 * RAMP_WIDTH])
+//    rotate([0, 90 - RAMP_ANGLE])
+//    translate([SLIDEY_COEFF * RAMP_WIDTH - 10, 0, 0])
+//    mirror([1,0,0])
+//    rotate([-90, 0, 0])
+//    rotramp(RAMP_RUN, $preview ? 1 : 0.05, RAMP_ANGLE, SLIDEY_COEFF * RAMP_WIDTH, THICKNESS);
+//
+//    cube(100);
+//}
 
 //translate([30, 0, 0])
 //mirror([1,0])
 //rotate([0, 30, 10])
 //cube([THICKNESS, RAMP_RUN, RAMP_HEIGHT_GUESS]);
 
-translate([RAMP_WIDTH, 0])
-rotate([0, 90, 0])
-%piece();
+//translate([RAMP_WIDTH, 0])
+//rotate([0, 90, 0])
+//%piece();
 
-//translate([0, RAMP_RUN, 0])
-//rotate([90, 0, 0])
-//intersection()  {
-//    translate([-STRETCH, 0, 0])
-//    oval_prism(RAMP_RUN, PIECE_D + STRETCH - THICKNESS/2, RAMP_WIDTH + STRETCH);
-//    cube(10 * STRETCH);
-//}
+translate([0, RAMP_RUN, 0])
+rotate([90, 0, 0])
+intersection()  {
+    translate([-STRETCH, 0, 0])
+    oval_prism(RAMP_RUN, PIECE_D + STRETCH - THICKNESS/2, RAMP_WIDTH + STRETCH);
+    cube(10 * STRETCH);
+}
 
 //mirror([1,0])
 //cube([THICKNESS, RAMP_RUN, RAMP_HEIGHT_GUESS + PIECE_H]);
@@ -177,7 +177,7 @@ hull(){
 translate([0, RAMP_RUN, 0])
 cube([25, THICKNESS, PIECE_D]);
 
-cube([THICKNESS, RAMP_RUN, PIECE_D]);
+//cube([THICKNESS, RAMP_RUN, PIECE_D]);
 }
 translate([RAMP_WIDTH, 0, 0]) {
     mirror([0,1])
@@ -194,10 +194,11 @@ translate([RAMP_WIDTH, 0, 0]) {
         cube([PIECE_H, RAMP_RUN, 1]);
     }
 
-    translate([PIECE_H, -10, 0])
-    cube([THICKNESS, RAMP_RUN + 10, 40]);
+//    translate([PIECE_H, -10, 0])
+//    cube([THICKNESS, RAMP_RUN + 10, 40]);
 
     // Grabbing platform
+    %
     translate([0, RAMP_RUN, 0])
     {
         GRAB_LEN = PIECE_D / 1.333;
@@ -214,7 +215,7 @@ translate([RAMP_WIDTH, 0, 0]) {
     }
 }
 }
-//ramp();
+ramp();
 // Ramp right wall raise / extension
 //!cube([THICKNESS, RAMP_RUN + 10, 15]);
 
@@ -329,7 +330,7 @@ module fullwall()
     mirror([0, 1, 0])
     halfwall();
 }
-halfwall();
+//halfwall();
 //translate([DROP_WIDTH + THICKNESS, 0, 0])
 //mirror([1, 0, 0])
 //wall();
