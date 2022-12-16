@@ -36,6 +36,7 @@ def system(cmd):
 
 signal.signal(signal.SIGINT, lambda *_:  sys.exit(1))
 
+# Keep the wombat screen on
 def screen_on_loop():
     while True:
         system("xset dpms force on")
@@ -101,6 +102,7 @@ if DEBUG:
 else:
     SLIDERS = []
 
+# Save current colors to colors.py
 def save_colors(*_args, **_kwargs):
     if not DEBUG: return
     print("Saving colors")
@@ -208,7 +210,8 @@ def draw_hull(frame, hull, color=(0,255,0), width=2):
     cv2.drawContours(copy, [hull], -1, color, width)
     return copy
 
-# def draw_text(frame, text, color=(255, 255, 255), width=1, )
+def draw_text(frame, text, pos, thickness=1, fontScale=0.5, color=(255, 255, 255)):
+    return cv2.putText(frame, text, pos, cv2.FONT_HERSHEY_SIMPLEX, fontScale, color, thickness, cv2.LINE_AA)
 
 def dist(a, b):
     dx = a[0] - b[0]
@@ -340,12 +343,6 @@ class Board:
 
         return moves, red_n, yellow_n, mask_n
 
-# MAJOR REMAINING STEPS
-# write movement/positioning
-# build track
-# write board reading and response
-# write gui and key responses (eg pause on button press)
-
 # Motor 1 = wheel
 # Motor 2 = magazine
 # Servo 0 = grabber
@@ -450,11 +447,13 @@ def divine_board(ps, ys, rs):
     assert len(ys) <= 20, "more than 20 yellow pieces"
     assert len(rs) <= 21, "more than 21 red pieces"
 
+    # Extract raw point from wrapper object
     mappt = lambda i: list(map(lambda p: p.pt, i))
     ps = mappt(ps)
     ys = mappt(ys)
     rs = mappt(rs)
 
+    # Sort pieces, left-to-right, bottom-to-top
     ps_l2r = list(sorted(ps, key=fst))
     lrss = lambda l: list(reversed(sorted(l, key=snd)))
     ps_l2r_b2t = lrss(ps_l2r[:6]) + lrss(ps_l2r[6:12]) \
@@ -464,10 +463,10 @@ def divine_board(ps, ys, rs):
 
     ps_sorted = list(map(lambda p: (int(p[0]), int(p[1])), ps_l2r_b2t))
 
+    # Create a board string from sorted keypoint positions
     board = "_" * 42
     pieces_in_board = 0
     for (c, p) in itertools.chain(map(lambda p: ('y', p), ys), map(lambda p: ('r', p), rs)):
-
         near_ps = list(sorted(map(lambda ip, p_=p: (ip[0], dist(ip[1], p_)), enumerate(ps_sorted)), key=snd))
         near_p = near_ps[0]
         if near_p[1] <= PIECE_NEAR_POINT_RADIUS:
@@ -477,25 +476,12 @@ def divine_board(ps, ys, rs):
             pieces_in_board += 1
 
     assert pieces_in_board == len(ys) + len(rs), "some pieces are in a weird spot"
-
     return ps_sorted, board
 
 def read_board_one_frame():
         # Get frame
         frame = get_frame()
         hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
-
-        # gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-        # gray = cv2.medianBlur(gray, 5)
-        # rows = gray.shape[0]
-        # circles = cv2.HoughCircles(gray, cv2.HOUGH_GRADIENT, 1, rows / 8, param1=100, param2=30, minRadius=10, maxRadius=30)
-
-        # if circles is not None:
-        #     circles = np.uint16(np.around(circles))
-        #     for i in circles[0, :]:
-        #         center = (i[0], i[1])
-        #         radius = i[2]
-        #         cv2.circle(frame, center, radius, (255, 0, 255), 3)
 
         # Get color-based masks
         board_mask = get_board_mask(hsv)
@@ -515,6 +501,7 @@ def read_board_one_frame():
         y_kps = detect_blobs_in_contour(cv2.bitwise_not(yellow_mask), board_contour)
         r_kps = detect_blobs_in_contour(cv2.bitwise_not(red_mask), board_contour)
 
+        # Divine the board (read the board from keypoint information)
         divined = None
         divined_err = None
         try:
@@ -550,7 +537,6 @@ def read_board_one_frame():
                 else: # board[i] == "y":
                     color = (0, 255, 255)
                 final = draw_text(final, str(i), p, color=color)
-                # final = cv2.putText(final, str(i), p, cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 1, cv2.LINE_AA)
 
         return {
             "frame": frame,
@@ -563,11 +549,8 @@ def read_board_one_frame():
         }
 
 
-def draw_text(frame, text, pos, thickness=1, fontScale=0.5, color=(255, 255, 255)):
-    return cv2.putText(frame, text, pos, cv2.FONT_HERSHEY_SIMPLEX, fontScale, color, thickness, cv2.LINE_AA)
-
 READ_BOARDS = 20 # Number of frames where we can parse a board, before we finish "reading"
-ACCEPTABLE_CONFIDENCE = 0.85
+ACCEPTABLE_CONFIDENCE = 0.85 # Fraction of identical frames to be acceptable
 def read_board():
     while True:
         boards = []
@@ -591,6 +574,7 @@ def read_board():
             imshow_n([final])
             wait_key()
 
+        # Get most common board, ensure we're confident enough in it.
         preferred_board = max(boards, key=boards.count)
         n_preferred = boards.count(preferred_board)
         if n_preferred / len(boards) > ACCEPTABLE_CONFIDENCE:
@@ -598,8 +582,6 @@ def read_board():
 
 def show_message(msg):
     img = np.zeros((400, 400, 3), dtype=np.uint8)
-    # img = np.ones((400, 400, 3), dtype=np.uint8)
-    # img *= 255
     img = draw_text(img, msg, (10, 200), thickness=2, fontScale=2, color=(255, 255, 255))
     imshow_n([img])
     wait_key()
